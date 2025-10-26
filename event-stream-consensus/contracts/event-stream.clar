@@ -204,3 +204,81 @@
         (ok true)
     )
 )
+
+;; #[allow(unchecked_data)]
+(define-public (verify-attendance (event-id uint) (attendee principal))
+    (let
+        (
+            (event (unwrap! (map-get? events { event-id: event-id }) err-not-found))
+            (attendance (unwrap! (map-get? attendances { event-id: event-id, attendee: attendee }) err-not-found))
+        )
+        (asserts! (is-eq (get organizer event) tx-sender) err-unauthorized)
+        (asserts! (get checked-in attendance) err-not-found)
+        (asserts! (is-none (map-get? verified-attendees { event-id: event-id, attendee: attendee })) err-already-verified)
+        (map-set verified-attendees
+            { event-id: event-id, attendee: attendee }
+            { verified-by: tx-sender, verification-block: stacks-block-height }
+        )
+        (ok true)
+    )
+)
+
+;; #[allow(unchecked_data)]
+(define-public (rate-event (event-id uint) (rating uint) (feedback (string-ascii 200)))
+    (let
+        (
+            (event (unwrap! (map-get? events { event-id: event-id }) err-not-found))
+            (attendance (unwrap! (map-get? attendances { event-id: event-id, attendee: tx-sender }) err-not-found))
+        )
+        (asserts! (and (>= rating u1) (<= rating u5)) err-invalid-params)
+        (asserts! (get checked-in attendance) err-unauthorized)
+        (asserts! (is-none (map-get? event-ratings { event-id: event-id, rater: tx-sender })) err-already-rated)
+        (map-set event-ratings
+            { event-id: event-id, rater: tx-sender }
+            { rating: rating, feedback: feedback }
+        )
+        (ok true)
+    )
+)
+
+;; #[allow(unchecked_data)]
+(define-public (register-category (category (string-ascii 50)))
+    (begin
+        (asserts! (is-eq tx-sender contract-owner) err-owner-only)
+        (map-set event-categories
+            { category: category }
+            { event-count: u0, active: true }
+        )
+        (ok true)
+    )
+)
+
+;; #[allow(unchecked_data)]
+(define-public (deactivate-category (category (string-ascii 50)))
+    (let
+        (
+            (cat-info (unwrap! (map-get? event-categories { category: category }) err-not-found))
+        )
+        (asserts! (is-eq tx-sender contract-owner) err-owner-only)
+        (map-set event-categories
+            { category: category }
+            (merge cat-info { active: false })
+        )
+        (ok true)
+    )
+)
+
+;; #[allow(unchecked_data)]
+(define-public (verify-organizer (organizer principal))
+    (let
+        (
+            (rep (unwrap! (map-get? organizer-reputation { organizer: organizer }) err-not-found))
+        )
+        (asserts! (is-eq tx-sender contract-owner) err-owner-only)
+        (map-set organizer-reputation
+            { organizer: organizer }
+            (merge rep { verified: true })
+        )
+        (ok true)
+    )
+)
