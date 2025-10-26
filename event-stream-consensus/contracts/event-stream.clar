@@ -122,3 +122,85 @@
         false
     )
 )
+
+;; Public functions
+;; #[allow(unchecked_data)]
+(define-public (create-event (event-name (string-ascii 100)) (event-type (string-ascii 50)) (duration uint))
+    (let
+        (
+            (new-event-id (+ (var-get event-nonce) u1))
+            (start-block stacks-block-height)
+            (end-block (+ stacks-block-height duration))
+            (current-rep (default-to 
+                { events-created: u0, total-attendees: u0, average-rating: u0, verified: false }
+                (map-get? organizer-reputation { organizer: tx-sender })))
+        )
+        (asserts! (> duration u0) err-invalid-params)
+        (map-set events
+            { event-id: new-event-id }
+            {
+                organizer: tx-sender,
+                event-name: event-name,
+                event-type: event-type,
+                start-block: start-block,
+                end-block: end-block,
+                attendee-count: u0,
+                active: true
+            }
+        )
+        (map-set organizer-reputation
+            { organizer: tx-sender }
+            (merge current-rep { events-created: (+ (get events-created current-rep) u1) })
+        )
+        (var-set event-nonce new-event-id)
+        (ok new-event-id)
+    )
+)
+
+;; #[allow(unchecked_data)]
+(define-public (check-in (event-id uint))
+    (let
+        (
+            (event (unwrap! (map-get? events { event-id: event-id }) err-not-found))
+            (current-badges (get total-badges (get-badge-count tx-sender)))
+            (event-type (get event-type event))
+            (current-stats (get attendance-count (get-attendee-stats tx-sender event-type)))
+        )
+        (asserts! (get active event) err-event-ended)
+        (asserts! (>= stacks-block-height (get start-block event)) err-event-not-started)
+        (asserts! (<= stacks-block-height (get end-block event)) err-event-ended)
+        (asserts! (is-none (map-get? attendances { event-id: event-id, attendee: tx-sender })) err-already-checked-in)
+        (map-set attendances
+            { event-id: event-id, attendee: tx-sender }
+            { checked-in: true, check-in-block: stacks-block-height, badge-issued: true }
+        )
+        (map-set events
+            { event-id: event-id }
+            (merge event { attendee-count: (+ (get attendee-count event) u1) })
+        )
+        (map-set badges
+            { attendee: tx-sender }
+            { total-badges: (+ current-badges u1) }
+        )
+        (map-set attendee-stats
+            { attendee: tx-sender, event-type: event-type }
+            { attendance-count: (+ current-stats u1) }
+        )
+        (ok true)
+    )
+)
+
+;; #[allow(unchecked_data)]
+(define-public (end-event (event-id uint))
+    (let
+        (
+            (event (unwrap! (map-get? events { event-id: event-id }) err-not-found))
+        )
+        (asserts! (is-eq (get organizer event) tx-sender) err-unauthorized)
+        (map-set events
+            { event-id: event-id }
+            (merge event { active: false })
+        )
+        (ok true)
+    )
+)
