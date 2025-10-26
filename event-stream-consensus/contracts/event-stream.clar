@@ -282,3 +282,94 @@
         (ok true)
     )
 )
+
+(define-public (bulk-check-in (event-id uint) (attendees (list 10 principal)))
+    (let
+        (
+            (event (unwrap! (map-get? events { event-id: event-id }) err-not-found))
+        )
+        (asserts! (is-eq (get organizer event) tx-sender) err-unauthorized)
+        (asserts! (get active event) err-event-ended)
+        (ok (map process-bulk-checkin attendees))
+    )
+)
+
+(define-private (process-bulk-checkin (attendee principal))
+    (begin
+        (map-set attendances
+            { event-id: (var-get event-nonce), attendee: attendee }
+            { checked-in: true, check-in-block: stacks-block-height, badge-issued: true }
+        )
+        true
+    )
+)
+
+;; #[allow(unchecked_data)]
+(define-public (claim-badge (event-id uint))
+    (let
+        (
+            (attendance (unwrap! (map-get? attendances { event-id: event-id, attendee: tx-sender }) err-not-found))
+            (current-badges (get total-badges (get-badge-count tx-sender)))
+        )
+        (asserts! (get checked-in attendance) err-unauthorized)
+        (asserts! (not (get badge-issued attendance)) err-already-verified)
+        (map-set attendances
+            { event-id: event-id, attendee: tx-sender }
+            (merge attendance { badge-issued: true })
+        )
+        (map-set badges
+            { attendee: tx-sender }
+            { total-badges: (+ current-badges u1) }
+        )
+        (ok true)
+    )
+)
+
+;; #[allow(unchecked_data)]
+(define-public (update-event-details (event-id uint) (new-name (string-ascii 100)) (new-end-block uint))
+    (let
+        (
+            (event (unwrap! (map-get? events { event-id: event-id }) err-not-found))
+        )
+        (asserts! (is-eq (get organizer event) tx-sender) err-unauthorized)
+        (asserts! (get active event) err-event-ended)
+        (asserts! (> new-end-block stacks-block-height) err-invalid-params)
+        (map-set events
+            { event-id: event-id }
+            (merge event { event-name: new-name, end-block: new-end-block })
+        )
+        (ok true)
+    )
+)
+
+;; #[allow(unchecked_data)]
+(define-public (transfer-event-ownership (event-id uint) (new-organizer principal))
+    (let
+        (
+            (event (unwrap! (map-get? events { event-id: event-id }) err-not-found))
+        )
+        (asserts! (is-eq (get organizer event) tx-sender) err-unauthorized)
+        (map-set events
+            { event-id: event-id }
+            (merge event { organizer: new-organizer })
+        )
+        (ok true)
+    )
+)
+
+;; #[allow(unchecked_data)]
+(define-public (revoke-attendance (event-id uint) (attendee principal))
+    (let
+        (
+            (event (unwrap! (map-get? events { event-id: event-id }) err-not-found))
+            (attendance (unwrap! (map-get? attendances { event-id: event-id, attendee: attendee }) err-not-found))
+        )
+        (asserts! (is-eq (get organizer event) tx-sender) err-unauthorized)
+        (map-delete attendances { event-id: event-id, attendee: attendee })
+        (map-set events
+            { event-id: event-id }
+            (merge event { attendee-count: (- (get attendee-count event) u1) })
+        )
+        (ok true)
+    )
+)
