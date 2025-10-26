@@ -70,3 +70,55 @@
     { attendee: principal, event-type: (string-ascii 50) }
     { attendance-count: uint }
 )
+
+;; Read-only functions
+(define-read-only (get-event (event-id uint))
+    (map-get? events { event-id: event-id })
+)
+
+(define-read-only (get-attendance (event-id uint) (attendee principal))
+    (map-get? attendances { event-id: event-id, attendee: attendee })
+)
+
+(define-read-only (get-badge-count (attendee principal))
+    (default-to { total-badges: u0 } (map-get? badges { attendee: attendee }))
+)
+
+(define-read-only (get-event-nonce)
+    (ok (var-get event-nonce))
+)
+
+(define-read-only (get-organizer-reputation (organizer principal))
+    (map-get? organizer-reputation { organizer: organizer })
+)
+
+(define-read-only (get-event-rating (event-id uint) (rater principal))
+    (map-get? event-ratings { event-id: event-id, rater: rater })
+)
+
+(define-read-only (get-category-info (category (string-ascii 50)))
+    (map-get? event-categories { category: category })
+)
+
+(define-read-only (is-attendance-verified (event-id uint) (attendee principal))
+    (is-some (map-get? verified-attendees { event-id: event-id, attendee: attendee }))
+)
+
+(define-read-only (get-attendee-stats (attendee principal) (event-type (string-ascii 50)))
+    (default-to { attendance-count: u0 } 
+        (map-get? attendee-stats { attendee: attendee, event-type: event-type }))
+)
+
+(define-read-only (has-checked-in (event-id uint) (attendee principal))
+    (match (map-get? attendances { event-id: event-id, attendee: attendee })
+        attendance (get checked-in attendance)
+        false
+    )
+)
+
+(define-read-only (is-event-active (event-id uint))
+    (match (map-get? events { event-id: event-id })
+        event (get active event)
+        false
+    )
+)
